@@ -1,0 +1,17 @@
+# Helyi munkafájl az AI asszisztensnek – nem része a projektnek
+CLAUDE.md
+.claude/
+
+# Build kimenet – a build.ps1 bármikor újraépíti
+dist/
+
+# IDE: a WordPress stubok csak az intelephense-nek kellenek (~6 MB, külső forrás)
+stubs/
+.vscode/
+
+# Rendszer- és szerkesztőfájlok
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
