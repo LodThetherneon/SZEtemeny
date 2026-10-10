@@ -89,9 +89,46 @@ SZESUTI_F::notice(
 
 SZESUTI_F::section(
 	__( 'Frissítések', 'szesuti' ),
-	__( 'Add meg egy JSON manifest URL-jét, és a plugin a WordPress megszokott frissítési felületén jelzi, ha új verzió érhető el. Így nem kell 100 oldalon ZIP-et feltölteni.', 'szesuti' )
+	__( 'A plugin magától frissül a GitHub-repó kiadásaiból (Release): ha új verzió jelenik meg, a Bővítmények oldalon a WordPress megszokott „Frissítés elérhető” jelzése látszik, és egy kattintással vagy automatikus frissítéssel települ. Így nem kell 100 oldalon ZIP-et feltölteni.', 'szesuti' )
 );
 ?>
+
+<form method="post" action="">
+	<?php wp_nonce_field( 'szesuti_tools', 'szesuti_nonce' ); ?>
+	<input type="hidden" name="szesuti_action" value="check_update" />
+	<p>
+		<?php
+		echo esc_html(
+			sprintf(
+				/* translators: %s: a frissítés forrása */
+				__( 'Forrás: %s', 'szesuti' ),
+				szesuti()->updater->source_label()
+			)
+		);
+		?>
+	</p>
+	<p>
+		<button type="submit" class="button"><?php esc_html_e( 'Frissítés ellenőrzése most', 'szesuti' ); ?></button>
+		<?php
+		$szesuti_remote = get_transient( 'szesuti_update_version' );
+		if ( $szesuti_remote ) {
+			delete_transient( 'szesuti_update_version' );
+			printf(
+				' <span class="szesuti-pill %1$s">%2$s</span>',
+				version_compare( SZESUTI_VERSION, $szesuti_remote, '<' ) ? 'szesuti-pill--warn' : 'szesuti-pill--ok',
+				esc_html(
+					sprintf(
+						/* translators: 1: legfrissebb kiadás, 2: telepített verzió */
+						__( 'Legfrissebb kiadás: %1$s · telepítve: %2$s', 'szesuti' ),
+						$szesuti_remote,
+						SZESUTI_VERSION
+					)
+				)
+			);
+		}
+		?>
+	</p>
+</form>
 
 <form method="post" action="">
 	<?php wp_nonce_field( 'szesuti_save', 'szesuti_nonce' ); ?>
@@ -105,11 +142,11 @@ SZESUTI_F::section(
 		array( 'advanced', 'update_url' ),
 		$adv['update_url'],
 		array(
-			'label'       => __( 'Frissítési manifest URL', 'szesuti' ),
+			'label'       => __( 'Saját frissítési manifest URL', 'szesuti' ),
 			'type'        => 'url',
 			'class'       => 'large-text code',
 			'placeholder' => 'https://sajatszerver.hu/szesuti/update.json',
-			'desc'        => __( 'Hagyd üresen, ha kézzel frissítesz. A várt JSON felépítése lent látható.', 'szesuti' ),
+			'desc'        => __( 'Hagyd üresen: ekkor a GitHub-repó kiadásaiból frissül (ajánlott). Csak akkor töltsd ki, ha belső tükörről akarsz frissíteni. A várt JSON felépítése lent látható.', 'szesuti' ),
 		)
 	);
 
@@ -177,36 +214,8 @@ SZESUTI_F::section(
 	</p>
 </form>
 
-<?php if ( '' !== $adv['update_url'] ) : ?>
-	<form method="post" action="">
-		<?php wp_nonce_field( 'szesuti_tools', 'szesuti_nonce' ); ?>
-		<input type="hidden" name="szesuti_action" value="check_update" />
-		<p>
-			<button type="submit" class="button"><?php esc_html_e( 'Frissítés ellenőrzése most', 'szesuti' ); ?></button>
-			<?php
-			$szesuti_remote = get_transient( 'szesuti_update_version' );
-			if ( $szesuti_remote ) {
-				delete_transient( 'szesuti_update_version' );
-				printf(
-					' <span class="szesuti-pill %1$s">%2$s</span>',
-					version_compare( SZESUTI_VERSION, $szesuti_remote, '<' ) ? 'szesuti-pill--warn' : 'szesuti-pill--ok',
-					esc_html(
-						sprintf(
-							/* translators: 1: távoli verzió, 2: telepített verzió */
-							__( 'Szerveren: %1$s · telepítve: %2$s', 'szesuti' ),
-							$szesuti_remote,
-							SZESUTI_VERSION
-						)
-					)
-				);
-			}
-			?>
-		</p>
-	</form>
-<?php endif; ?>
-
 <details class="szesuti-details">
-	<summary><?php esc_html_e( 'Példa frissítési manifest (update.json)', 'szesuti' ); ?></summary>
+	<summary><?php esc_html_e( 'Példa saját frissítési manifest (update.json, csak belső tükörhöz)', 'szesuti' ); ?></summary>
 	<pre><code>{
   "name": "SZetemény",
   "slug": "szesuti",
@@ -224,7 +233,7 @@ SZESUTI_F::section(
   }
 }</code></pre>
 	<p class="description">
-		<?php esc_html_e( 'A ZIP gyökerében egy „szesuti” nevű mappának kell lennie. A plugin a letöltött mappát automatikusan átnevezi, ha a verziószám is benne van a nevében.', 'szesuti' ); ?>
+		<?php esc_html_e( 'A „name”, a „version” és a „download_url” mező kötelező. A ZIP a build.ps1 kimenete legyen (gyökerében a „szesuti” mappa).', 'szesuti' ); ?>
 	</p>
 </details>
 

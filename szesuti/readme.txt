@@ -4,7 +4,7 @@ Tags: cookie, gdpr, consent, cookie consent, consent mode
 Requires at least: 5.6
 Tested up to: 6.7
 Requires PHP: 7.2
-Stable tag: 1.1.3
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -39,8 +39,8 @@ hogy a külső mérőkódok hozzájárulás nélkül lefussanak.
 * **Sok beállítás** – elrendezés, pozíció, színek külön világos és sötét témához,
   animáció, gombstílus és -sorrend, saját CSS, ikonválasztó (saját képpel), élő előnézet.
 * **Export/import** – egy JSON fájllal átvihető az összes beállítás másik oldalra.
-* **Saját frissítéskezelő** – JSON manifest alapján a WordPress normál frissítési
-  felületén jelzi az új verziót.
+* **Automatikus frissítés** – a GitHub-repó kiadásaiból (Release) a WordPress normál
+  frissítési felületén jelzi és telepíti az új verziót. Belső tükörhöz JSON manifest is megadható.
 
 = Shortcode-ok =
 
@@ -64,7 +64,7 @@ JavaScript:
 Szűrők: `szesuti_settings`, `szesuti_services`, `szesuti_known_cookies`,
 `szesuti_blocker_rules`, `szesuti_js_config`, `szesuti_should_display`,
 `szesuti_run_blocker`, `szesuti_current_language`, `szesuti_visitor_country`,
-`szesuti_banner_template`, `szesuti_update_url`.
+`szesuti_banner_template`, `szesuti_update_url`, `szesuti_update_repository`.
 
 Sablon felülírása a témában: `wp-content/themes/<téma>/szesuti/banner.php`
 
@@ -103,6 +103,37 @@ IP-címet nem. Az IP-ből saltinggal képzett SHA-256 lenyomatot képez, ami ön
 vissza. Az URL és a böngészőazonosító mentése külön ki-be kapcsolható.
 
 == Changelog ==
+
+= 1.2.0 =
+* Új: automatikus frissítés a GitHub-repó kiadásaiból (Release), a beépített Plugin Update
+  Checker 5.7 könyvtárral, ugyanúgy, mint az SZEducate-ben. Ha a repóban új Release jelenik meg,
+  minden oldal Bővítmények listájában megjelenik a „Frissítés elérhető” jelzés, és egy
+  kattintással, WP-CLI-vel vagy automatikus frissítéssel települ. Eddig 100 oldalon kézzel
+  kellett ZIP-et feltölteni, vagy saját update.json-t kellett üzemeltetni.
+* A frissítő csak a Release-hez csatolt `szetemeny-x.y.z.zip` mellékletet telepíti. A GitHub
+  automatikus forrás-ZIP-je a teljes repó (a plugin egy almappában van). Ebből rossz szerkezetű,
+  inaktív plugin lenne, ezért a frissítő ezt kifejezetten kizárja.
+* A saját manifest URL (Eszközök fül) megmaradt. Ha ki van töltve, a GitHub helyett azt
+  használja (pl. belső tükör), a formátum változatlan.
+* Új, opcionális `SZESUTI_GITHUB_TOKEN` konstans a `wp-config.php`-ben, arra az esetre, ha egy
+  szerverről sok oldal kérdez, és elfogyna a GitHub óránkénti kerete (60 kérés/IP). Egy
+  ellenőrzés egyetlen API-kérés.
+* Az ellenőrzés csak adminban, WP-cronban és WP-CLI-ben fut, a látogatói oldalakat nem lassítja.
+  A `wp plugin update szesuti` mindig friss ellenőrzéssel indul, így tömeges frissítésnél nem
+  kell kivárni a 12 órás ütemezést.
+* Az 1.1.x-ről erre a verzióra még egyszer kézzel kell frissíteni (ZIP feltöltése). Ettől
+  kezdve a frissítések maguktól érkeznek.
+
+= 1.1.4 =
+* Javítás: elfogadás után a beágyazott térkép vagy videó nem jelent meg, ha a téma az iframe-et
+  abszolút pozícióval méretezi (16:9-es keret, `height:100%`, levágott My Maps fejléc). A helyőrző
+  doboz az iframe körül maradt, 0 magasra zsugorodott és levágta. Mostantól elfogadáskor a
+  helyőrző teljesen eltűnik, az iframe pedig visszakerül az eredeti helyére.
+* Javítás: ilyen keretben a helyőrző elfogadás előtt a keret alá csúszott vagy kilógott belőle;
+  most a keretet tölti ki, így az ikon és a gomb a beágyazás helyén látszik.
+* A Google „Saját térképek” (My Maps, `google.com/maps/d/…`) beágyazását a plugin mostantól
+  Google Maps-ként ismeri fel (Funkcionális kategória). Korábban szigorú módban ismeretlen
+  forrásként a Marketing kategóriához kötötte.
 
 = 1.1.3 =
 * Javítás: a Háttéradatbázis exportja alapból csak a „saját és importált” bejegyzéseket

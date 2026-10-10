@@ -2,7 +2,7 @@
 
 Készítette: **Műszaki Fejlesztési és Üzemeltetési Igazgatóság** (Széchenyi István Egyetem)
 
-Kész, telepíthető csomag: **`dist/szetemeny-1.1.3.zip`**
+Kész, telepíthető csomag: **`dist/szetemeny-1.2.0.zip`**
 
 > **Az 1.0.0-s ZIP hibás volt, ne használd.** Linuxos tárhelyen nem lehetett sem
 > aktiválni („A bővítmény fájl nem létezik”), sem törölni. Ha már feltetted, lásd a
@@ -24,7 +24,7 @@ töröl semmit, a „Csere a feltöltöttre” pedig hibával leáll. Ne próbá
    *„SZetemény takarító: Kész. Törölve: wp-content/plugins/szesuti-1.0.0 (36 fájl).”*
    A régi, hibás SZESÜTI eltűnik a listából. A takarító magától kikapcsol.
 4. A takarítónál kattints a **Törlés** linkre – ez már rendesen törlődik.
-5. Töltsd fel és kapcsold be a `dist/szetemeny-1.1.3.zip`-et (1. pont).
+5. Töltsd fel és kapcsold be a `dist/szetemeny-1.2.0.zip`-et (1. pont).
 
 A takarító kizárólag a hibás csomag maradványát törli: egy `szesuti\szesuti.php` **nevű**
 fájlról ismeri fel, ilyen szabályos pluginban nem létezik. Más pluginhoz nem nyúl.
@@ -45,7 +45,7 @@ Töröld a `wp-content/plugins/szesuti-1.0.0` (vagy `szesuti`) mappát – azt, 
 ### A) ZIP-ből (ezt használd élesben)
 
 1. WordPress admin → **Bővítmények → Új hozzáadása → Bővítmény feltöltése**
-2. Válaszd ki a `dist/szetemeny-1.1.3.zip` fájlt → **Telepítés most**
+2. Válaszd ki a `dist/szetemeny-1.2.0.zip` fájlt → **Telepítés most**
 3. **Bekapcsolás**
 
 A ZIP gyökerében a `szesuti` mappa van, tehát közvetlenül feltölthető. A WordPress
@@ -53,6 +53,7 @@ a `wp-content/plugins/szesuti` mappába telepíti, a ZIP fájlnevétől függetl
 
 **Frissítésnél** (ha a `szesuti` már fent van): töltsd fel az új ZIP-et ugyanígy,
 a WordPress felajánlja a **„Csere a feltöltöttre”** gombot. A beállítások megmaradnak.
+Az 1.2.0-tól erre csak egyszer van szükség, utána a frissítés magától érkezik (lásd 4. rész).
 
 ### B) FTP / SSH-n (fejlesztéshez)
 
@@ -164,52 +165,103 @@ adatbázisba – tehát bármikor visszavonható a mu-plugin törlésével.
 
 ---
 
-## 4. Frissítés 100 oldalon egyszerre
+## 4. Frissítés 100 oldalon egyszerre (GitHub Release)
 
-Tegyél egy `update.json` fájlt bárhová, ahol HTTP-n elérhető:
+Az 1.2.0-tól a plugin magától frissül a GitHub-repó kiadásaiból
+(<https://github.com/LodThetherneon/SZEtemeny/releases>), ugyanúgy, mint az SZEducate.
+A [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker) könyvtár
+a pluginba van csomagolva (`szesuti/vendor/plugin-update-checker`), nem kell hozzá semmit
+beállítani.
+
+> **Egyszeri lépés:** az 1.1.x-es oldalakon még nincs benne a frissítő, ezért ezekre az
+> 1.2.0-t **egyszer kézzel** kell feltölteni („Csere a feltöltöttre”). Ettől kezdve minden
+> további verzió magától érkezik.
+
+### Új verzió kiadása
+
+1. Kód + changelog bejegyzés a `szesuti/readme.txt`-be (`= x.y.z =`).
+2. Csomagolás:
+
+   ```powershell
+   .\build.ps1 -Version 1.2.1
+   ```
+
+   Ez elkészíti a `dist/szetemeny-1.2.1.zip`-et és mellé a `dist/szetemeny-1.2.1-release.md`-t
+   (a changelog bejegyzés, ez lesz a Release leírása).
+3. Commit és push a `main` ágra.
+4. GitHubon: **Releases → Draft a new release**
+   - **Tag:** `v1.2.1` (új tag, cél: `main`). A verziót a plugin a tagből olvassa ki, ezért
+     egyezzen a `build.ps1 -Version` értékével.
+   - **Leírás:** a `szetemeny-1.2.1-release.md` tartalma. A WordPress a „Részletek
+     megtekintése” ablakban ezt mutatja változásnaplóként.
+   - **Melléklet:** húzd be a `dist/szetemeny-1.2.1.zip`-et. **Pontosan ilyen nevű**
+     (`szetemeny-x.y.z.zip`) melléklet kell, más ZIP-et a frissítő nem fogad el.
+   - Ne jelöld „pre-release”-nek és ne hagyd piszkozatban, azokat a frissítő kihagyja.
+   - **Publish release**.
+
+Az oldalak 12 óránként néznek rá a GitHubra, ezért legfeljebb fél nap múlva jelenik meg a
+**„Frissítés elérhető”** jelzés a Bővítmények oldalon. Azonnal is ellenőrizhető: a
+Bővítmények listájában a SZetemény sorában **„Frissítés ellenőrzése”**, vagy
+**SZetemény → Eszközök → Frissítés ellenőrzése most** (a Vezérlőpult → Frissítések oldal
+percenként, a Bővítmények oldal óránként magától is ránéz). Ezután egy kattintással
+frissíthető, vagy a plugin sorában bekapcsolható az **automatikus frissítés** is.
+
+Kötegelve WP-CLI-vel: `wp plugin update szesuti`. Ez mindig friss ellenőrzéssel indul, tehát
+a Release közzététele után azonnal végigfuttatható az összes oldalon.
+
+### Mire figyel a frissítő
+
+- **Csak a Release mellékletét telepíti.** A GitHub automatikus „Source code (zip)”
+  csomagja a teljes repó, abban a plugin egy almappában van. Ebből a WordPress rossz
+  szerkezetű, inaktív plugint csinálna (ilyen volt az 1.0.0-s hiba is), ezért a frissítő
+  ezt kifejezetten kizárja. Ha a mellékletet elfelejted, egyszerűen nem jelez frissítést.
+- **GitHub API-keret:** hitelesítés nélkül 60 kérés/óra **IP-címenként**. Egy ellenőrzés
+  egy kérés, oldalanként 12 óránként egyszer, ez 100 oldalra is bőven elég. Ha mégis
+  elfogy (sok oldal egy szerveren, sok kézi ellenőrzés), az Eszközök fül ezt kiírja. Ilyenkor
+  egy csak olvasási jogú GitHub-tokent lehet megadni a `wp-config.php`-ben:
+
+  ```php
+  define( 'SZESUTI_GITHUB_TOKEN', 'github_pat_...' );
+  ```
+
+  Ugyanez kell akkor is, ha a repó egyszer privát lesz.
+- Az ellenőrzés csak adminban, WP-cronban és WP-CLI-ben fut, a látogatói oldalakat nem lassítja.
+
+### Belső tükör (opcionális)
+
+Ha az oldalak nem érik el a GitHubot, a régi módszer is működik. Tegyél egy `update.json`
+fájlt egy belső szerverre, és az URL-jét írd be: **Eszközök → Saját frissítési manifest URL**
+(vagy mu-pluginból: `$s['advanced']['update_url'] = '...';`). Ha ki van töltve, a plugin a
+GitHub helyett ezt használja.
 
 ```json
 {
   "name": "SZetemény",
   "slug": "szesuti",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "requires": "5.6",
   "tested": "6.7",
   "requires_php": "7.2",
   "homepage": "https://sajatszerver.hu/szesuti",
-  "download_url": "https://sajatszerver.hu/szesuti/szetemeny-1.1.3.zip",
-  "last_updated": "2026-09-21 10:00:00",
+  "download_url": "https://sajatszerver.hu/szesuti/szetemeny-1.2.1.zip",
+  "last_updated": "2026-10-10 10:00:00",
   "sections": {
     "description": "Sütikezelő.",
-    "changelog": "<h4>1.1.0</h4><ul><li>Változás...</li></ul>"
+    "changelog": "<h4>1.2.1</h4><ul><li>Változás...</li></ul>"
   }
 }
 ```
 
-Ennek az URL-jét írd be minden oldalon: **Eszközök → Frissítési manifest URL**.
-(Vagy egyszer, a fenti mu-pluginban: `$s['advanced']['update_url'] = '...';`)
+A `name`, a `version` és a `download_url` mező kötelező.
 
-Ezután új verzió kiadása így néz ki:
-
-```powershell
-.\build.ps1 -Version 1.1.0      # frissíti a verziót és csomagol
-# töltsd fel a dist/szetemeny-1.1.3.zip fájlt és frissítsd az update.json-t
-```
+### Csomagolás
 
 A `build.ps1` minden csomagolás után ellenőrzi a ZIP-et (perjeles útvonalak, minden a
-`szesuti/` mappa alatt), és ha hibás, törli és leáll. Mindig ezzel csomagolj, **ne** a
-PowerShell `Compress-Archive` parancsával – Windows PowerShell 5.1 alatt az fordított
-perjellel ír, és az 1.0.0-s hiba is ebből lett.
-
-A 100 oldal a Bővítmények oldalon jelzi majd, hogy „Frissítés elérhető”, és egy
-kattintással frissíthető – vagy WP-CLI-vel kötegelve:
-
-```bash
-wp plugin update szesuti
-```
+`szesuti/` mappa alatt, benne van a frissítő), és ha hibás, törli és leáll. Mindig ezzel
+csomagolj, **ne** a PowerShell `Compress-Archive` parancsával. Windows PowerShell 5.1
+alatt az fordított perjellel ír, és az 1.0.0-s hiba is ebből lett.
 
 ---
-
 ## 5. Süti tájékoztató oldal
 
 Hozz létre egy oldalt és tedd bele:

@@ -3,7 +3,7 @@
  * Plugin Name:       SZetemény – Sütikezelő
  * Plugin URI:        https://adatvedelemteszt.sze.hu
  * Description:       Teljes körű, GDPR/ePrivacy-kompatibilis sütikezelő: automatikus szkriptblokkolás, Google Consent Mode v2, hozzájárulás-napló, többnyelvűség, geo-célzás, sütiszkenner és részletes megjelenési beállítások.
- * Version:           1.1.3
+ * Version:           1.2.0
  * Requires at least: 5.6
  * Requires PHP:      7.2
  * Author:            Műszaki Fejlesztési és Üzemeltetési Igazgatóság
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SZESUTI_VERSION', '1.1.3' );
+define( 'SZESUTI_VERSION', '1.2.0' );
 define( 'SZESUTI_FILE', __FILE__ );
 define( 'SZESUTI_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SZESUTI_URL', plugin_dir_url( __FILE__ ) );
@@ -90,6 +90,9 @@ final class SZESUTI_Plugin {
 	/** @var SZESUTI_Library */
 	public $library;
 
+	/** @var SZESUTI_Updater */
+	public $updater;
+
 	public static function instance() {
 		if ( null === self::$instance ) {
 			// Előbb beállítjuk a példányt, csak utána építjük fel a komponenseket.
@@ -118,7 +121,7 @@ final class SZESUTI_Plugin {
 
 		new SZESUTI_Shortcodes( $this->settings, $this->i18n );
 		new SZESUTI_Rest( $this->settings, $this->log, $this->geo );
-		new SZESUTI_Updater( $this->settings );
+		$this->updater = new SZESUTI_Updater( $this->settings );
 
 		if ( is_admin() ) {
 			new SZESUTI_Admin( $this->settings, $this->i18n, $this->scanner, $this->log, $this->library );

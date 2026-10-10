@@ -6,6 +6,8 @@
         .\build.ps1 -Version 1.1.0  # verziószám frissítése is a forrásban
 
     A ZIP gyökerében egy "szesuti" mappa lesz, ahogy a WordPress elvárja.
+    Mellé elkészül a GitHub Release leírása is (szetemeny-<verzió>-release.md),
+    a readme.txt changelogjából.
 
     Két Windows-os csapdát kerül el szándékosan:
       1. NEM a Compress-Archive parancsot használja. Windows PowerShell 5.1 alatt az
@@ -126,6 +128,7 @@ $errors = @()
 if ($entries | Where-Object { $_ -match '\\' })          { $errors += 'forditott perjel az utvonalban' }
 if ($entries | Where-Object { $_ -notlike 'szesuti/*' }) { $errors += 'nem a szesuti/ mappa alatti bejegyzes' }
 if ($entries -notcontains 'szesuti/szesuti.php')         { $errors += 'hianyzik a szesuti/szesuti.php' }
+if ($entries -notcontains 'szesuti/vendor/plugin-update-checker/plugin-update-checker.php') { $errors += 'hianyzik a frissitokezelo (vendor/plugin-update-checker)' }
 if ($entries.Count -ne @($files).Count)                  { $errors += "bejegyzesszam elter ($($entries.Count) vs $(@($files).Count))" }
 
 if ($errors.Count) {
@@ -133,7 +136,31 @@ if ($errors.Count) {
     throw ('A ZIP hibas, toroltem: ' + ($errors -join '; '))
 }
 
+# --- GitHub Release leiras a changelogbol ---------------------------------
+# A WordPress a "Reszletek" ablakban ezt mutatja valtozasnaplokent.
+
+$notesPath = Join-Path $dist "szetemeny-$Version-release.md"
+$notes     = ''
+$readme    = Join-Path $source 'readme.txt'
+if (Test-Path $readme) {
+    $readmeText = [System.IO.File]::ReadAllText($readme, $utf8) -replace "`r`n", "`n"
+    $m = [regex]::Match($readmeText, '(?ms)^= ' + [regex]::Escape($Version) + ' =\s*\n(.*?)(?=^= |^== |\z)')
+    # A readme.txt tordelt folytatosorait egy sorba vonjuk (a GitHub minden sortorest megjelenit).
+    if ($m.Success) { $notes = ($m.Groups[1].Value.Trim() -replace '\n[ \t]+', ' ') }
+}
+if ($notes) {
+    [System.IO.File]::WriteAllText($notesPath, $notes + "`n", $utf8)
+}
+else {
+    Write-Host "  FIGYELEM: a readme.txt-ben nincs '= $Version =' bejegyzes, Release leiras nem keszult." -ForegroundColor Yellow
+}
+
 $size = [math]::Round((Get-Item $zipPath).Length / 1KB, 1)
 Write-Host ""
 Write-Host "Kesz: $zipPath  ($size KB, $($entries.Count) fajl)"
 Write-Host "Ellenorizve: minden utvonal perjeles es a szesuti/ mappa alatt van."
+Write-Host ""
+Write-Host "GitHub Release (ettol frissul a tobbi oldal):"
+Write-Host "  Tag:        v$Version   (cel: main)"
+Write-Host "  Melleklet:  szetemeny-$Version.zip   (pontosan ez a nev kell)"
+if ($notes) { Write-Host "  Leiras:     $notesPath tartalma" }

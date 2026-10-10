@@ -6,7 +6,7 @@ saját oldalaira. Fizetős CMP-k (Cookiebot, Complianz Pro stb.) kiváltására 
 
 Készítette: **Műszaki Fejlesztési és Üzemeltetési Igazgatóság** (Széchenyi István Egyetem)
 
-- Verzió: **1.1.3** · WordPress 5.6+ · PHP 7.2+
+- Verzió: **1.2.0** · WordPress 5.6+ · PHP 7.2+
 - Telepítési és bevezetési útmutató: **[TELEPITES.md](TELEPITES.md)**
 - Változásnapló: [szesuti/readme.txt](szesuti/readme.txt) (Changelog szakasz)
 
@@ -30,7 +30,7 @@ mérőkódok, beágyazások és követőpixelek hozzájárulás nélkül lefussa
 | Sütiszkenner | Böngészőben végigjárja az egész oldalt, és a talált sütiket felveszi a sütilistába. |
 | Háttéradatbázis | Az összes ismert sütifajta. Oldalak között exporttal/importtal körbeadható. |
 | Többnyelvűség, geo | HU/EN beépítve, WPML/Polylang, EU/EGT-célzás gyorsítótár-biztos módban. |
-| Tömeges üzemeltetés | JSON beállítás-export/import, `szesuti_settings` szűrő mu-pluginból, saját frissítéskezelő (JSON manifest). |
+| Tömeges üzemeltetés | JSON beállítás-export/import, `szesuti_settings` szűrő mu-pluginból, automatikus frissítés a GitHub Release-ekből (Plugin Update Checker). |
 
 ---
 
@@ -128,8 +128,11 @@ látja – arra a `szesuti_has_consent()` függvény való.
   gyengíti a védelmet.
 - **`szesuti_settings` szűrő** mu-pluginból: kódból felülírható bármi, és ez nem ég bele az
   adatbázisba (lásd TELEPITES.md, 3. rész, 4. lépés).
-- **Frissítés:** `SZESUTI_Updater` egy saját szerveren lévő JSON manifestet figyel. Ha abban
-  nagyobb verzió van, a WordPress normál „Frissítés elérhető” felületén jelenik meg.
+- **Frissítés:** `SZESUTI_Updater` a beépített [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker)
+  (v5, `szesuti/vendor/`) segítségével a repó GitHub Release-eit figyeli. Új Release esetén a
+  WordPress normál „Frissítés elérhető” felületén jelenik meg. Csak a Release-hez csatolt
+  `szetemeny-x.y.z.zip`-et telepíti, a GitHub forrás-ZIP-jét nem (abban a plugin almappában
+  van). Belső tükörhöz JSON manifest URL is megadható. Részletek: TELEPITES.md, 4. rész.
 
 ### 6. Eltávolítás és teljes törlés
 
@@ -159,7 +162,7 @@ szesuti/                         ← maga a plugin (ez kerül a ZIP-be)
     class-szesuti-log.php        ← hozzájárulás-napló (tábla, takarítás)
     class-szesuti-rest.php       ← /szesuti/v1/consent és /geo
     class-szesuti-geo.php, -i18n.php, -colors.php, -icons.php, -shortcodes.php
-    class-szesuti-updater.php    ← saját frissítéskezelő
+    class-szesuti-updater.php    ← frissítés GitHub Release-ből (PUC)
     class-szesuti-wipe.php, -cleanup.php
     class-szesuti-admin*.php     ← admin menü, mentés, eszközök, Háttéradatbázis, napló
     admin/tab-*.php              ← az admin fülek tartalma
@@ -170,6 +173,7 @@ szesuti/                         ← maga a plugin (ez kerül a ZIP-be)
     szesuti-admin.js             ← admin felület
   assets/css/, assets/img/
   templates/banner.php           ← témából felülírható: <téma>/szesuti/banner.php
+  vendor/plugin-update-checker/  ← Plugin Update Checker 5.7 (MIT, külső könyvtár, ne módosítsd)
 takarito/szesuti-takarito/       ← külön bővítmény a hibás 1.0.0-s csomag maradványához
 build.ps1                        ← telepíthető ZIP készítése a dist/ mappába
 TELEPITES.md                     ← telepítés, bevezetés 100 oldalra, hibakeresés
@@ -183,8 +187,12 @@ TELEPITES.md                     ← telepítés, bevezetés 100 oldalra, hibake
 
 ```powershell
 .\build.ps1                  # dist\szetemeny-<verzió>.zip
-.\build.ps1 -Version 1.1.4   # a verziószámot is átírja (plugin fejléc, konstans, Stable tag)
+.\build.ps1 -Version 1.2.0   # a verziószámot is átírja (plugin fejléc, konstans, Stable tag)
 ```
+
+Mellé elkészül a `dist\szetemeny-<verzió>-release.md` is (a changelog bejegyzés). Kiadás:
+commit + push, majd GitHubon új Release `v<verzió>` taggel, ezzel a leírással és a ZIP-pel
+mellékletként. Ettől frissül a többi oldal (TELEPITES.md, 4. rész).
 
 A `build.ps1` ellenőrzi, hogy a ZIP-ben minden útvonal perjeles és a `szesuti/` mappa
 alatt van. **Ne használd a `Compress-Archive`-ot**: Windows PowerShell 5.1 alatt fordított
@@ -225,7 +233,7 @@ document.addEventListener( 'szesuti:change', e => console.log( e.detail ) );
 Szűrők: `szesuti_settings`, `szesuti_services`, `szesuti_known_cookies`,
 `szesuti_blocker_rules`, `szesuti_safe_hosts`, `szesuti_js_config`, `szesuti_should_display`,
 `szesuti_run_blocker`, `szesuti_current_language`, `szesuti_visitor_country`,
-`szesuti_banner_template`, `szesuti_update_url`.
+`szesuti_banner_template`, `szesuti_update_url`, `szesuti_update_repository`.
 
 Kézi megjelölés: `<script type="text/plain" data-szesuti="marketing" data-szesuti-src="…">`,
 kivétel: `data-szesuti-ignore="1"`.

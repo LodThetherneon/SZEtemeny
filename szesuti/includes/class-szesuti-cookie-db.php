@@ -218,7 +218,8 @@ class SZESUTI_Cookie_DB {
 				'group'    => 'embed',
 				'category' => 'functional',
 				'type'     => 'both',
-				'patterns' => array( 'google.com/maps/embed', 'maps.googleapis.com', 'maps.google.com/maps' ),
+				// A google.com/maps/d/… a „Saját térképek” (My Maps) beágyazása.
+				'patterns' => array( 'google.com/maps/embed', 'google.com/maps/d/embed', 'google.com/maps/d/u/', 'maps.googleapis.com', 'maps.google.com/maps' ),
 				'provider' => 'Google Maps',
 			),
 			'google_fonts' => array(

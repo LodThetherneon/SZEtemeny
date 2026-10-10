@@ -1,25 +1,24 @@
 <?php
 /**
- * Saját szerverről működő frissítéskezelő.
+ * Frissítéskezelő – Plugin Update Checker (PUC v5) alapon.
  *
- * A „Haladó” fülön megadott URL-en egy JSON manifestet vár. Ha abban nagyobb
- * verziószám szerepel, a WordPress normál frissítési felületén megjelenik a
- * „Frissítés elérhető” értesítés – pont úgy, mint a wordpress.org pluginoknál.
+ * Alapból a GitHub-repó Release-eiből frissít, ugyanúgy, mint az SZEducate: ha a
+ * repóban új Release jelenik meg, a WordPress a megszokott „Frissítés elérhető”
+ * jelzést adja, és egy kattintással (vagy `wp plugin update szesuti`-val, vagy
+ * automatikus frissítéssel) települ. Így nem kell 100 oldalon ZIP-et feltölteni.
  *
- * Minta manifest:
- * {
- *   "name": "SZetemény",
- *   "slug": "szesuti",
- *   "version": "1.1.0",
- *   "requires": "5.6",
- *   "tested": "6.7",
- *   "requires_php": "7.2",
- *   "author": "<a href=\"https://pelda.hu\">Név</a>",
- *   "homepage": "https://pelda.hu/szesuti",
- *   "download_url": "https://pelda.hu/szesuti/szesuti-1.1.0.zip",
- *   "last_updated": "2026-09-18 10:00:00",
- *   "sections": { "description": "...", "changelog": "<h4>1.1.0</h4><ul><li>...</li></ul>" }
- * }
+ * A repó gyökere NEM maga a plugin (az a szesuti/ almappában van), ezért a GitHub
+ * automatikus forrás-ZIP-je nem telepíthető: a plugin egy szinttel lejjebb kerülne,
+ * és inaktív lenne. Emiatt csak a Release-hez csatolt szetemeny-x.y.z.zip-et
+ * fogadjuk el (a build.ps1 kimenete), a tag- és ágalapú visszalépést kikapcsoljuk.
+ *
+ * Ha az Eszközök fülön (advanced.update_url) vagy a szesuti_update_url szűrővel
+ * JSON manifest URL van megadva, a GitHub helyett azt használja (pl. belső tükör).
+ * A manifest formátuma a PUC JSON formátuma, ami megegyezik a korábbi update.json-nal.
+ *
+ * Opcionális konstans a wp-config.php-ben: SZESUTI_GITHUB_TOKEN (csak olvasási jogú
+ * token). Akkor kell, ha a repó privát lesz, vagy egy szerverről annyi oldal
+ * kérdez, hogy elfogy a GitHub hitelesítés nélküli keretének (60 kérés/óra/IP).
  *
  * @package SZESUTI
  */
@@ -28,218 +27,240 @@ defined( 'ABSPATH' ) || exit;
 
 class SZESUTI_Updater {
 
-	const CACHE_KEY = 'szesuti_update_manifest';
+	/** A hivatalos repó. */
+	const REPOSITORY = 'https://github.com/LodThetherneon/SZEtemeny/';
+
+	/** Csak ilyen nevű Release-mellékletből frissít (a build.ps1 kimenete). */
+	const ASSET_REGEX = '/^szetemeny-\d+\.\d+\.\d+\.zip$/';
 
 	/** @var SZESUTI_Settings */
 	private $settings;
 
+	/** @var object|null A PUC példány (Vcs\PluginUpdateChecker vagy Plugin\UpdateChecker). */
+	private $checker = null;
+
 	public function __construct( SZESUTI_Settings $settings ) {
 		$this->settings = $settings;
 
-		add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'inject_update' ) );
-		add_filter( 'plugins_api', array( $this, 'plugin_info' ), 20, 3 );
-		add_filter( 'upgrader_source_selection', array( $this, 'fix_source_folder' ), 10, 4 );
-		add_action( 'upgrader_process_complete', array( $this, 'clear_cache' ), 10, 0 );
+		// Frissíteni csak adminban, cronban és WP-CLI-ből lehet; a látogatói oldalt nem terheljük.
+		if ( is_admin() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			$this->boot();
+		}
+	}
+
+	/** A PUC betöltése és beállítása. */
+	private function boot() {
+		require_once SZESUTI_DIR . 'vendor/plugin-update-checker/plugin-update-checker.php';
+
+		$manifest = $this->manifest_url();
+
+		try {
+			$this->checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+				'' !== $manifest ? $manifest : $this->repository(),
+				SZESUTI_FILE,
+				SZESUTI_SLUG
+			);
+		} catch ( Exception $e ) {
+			// Hibás repó URL a szűrőből: inkább ne legyen frissítés, mint hogy az admin elhasaljon.
+			$this->checker = null;
+			return;
+		}
+
+		if ( defined( 'WP_CLI' ) && WP_CLI && class_exists( 'WP_CLI', false ) ) {
+			// A PUC WP-CLI alatt csak 12 óránként néz rá a forrásra. Tömeges frissítésnél
+			// (`wp plugin update szesuti` 100 oldalon) ne kelljen kivárni.
+			WP_CLI::add_hook( 'before_invoke:plugin update', array( $this, 'cli_check' ) );
+		}
+
+		if ( '' !== $manifest ) {
+			return;
+		}
+
+		$this->checker->setBranch( 'main' );
+
+		$api = $this->checker->getVcsApi();
+		// A konstans a PUC verziózott névterében van; a get_class() azt a verziót adja,
+		// amelyiket a gyár ténylegesen választott (ha egy másik plugin újabb PUC-ot hoz).
+		$api->enableReleaseAssets( self::ASSET_REGEX, constant( get_class( $api ) . '::REQUIRE_RELEASE_ASSETS' ) );
+
+		add_filter( $this->checker->getUniqueName( 'vcs_update_detection_strategies' ), array( $this, 'only_releases' ) );
+		add_filter( 'pre_http_request', array( $this, 'skip_repo_file_requests' ), 10, 3 );
+
+		if ( defined( 'SZESUTI_GITHUB_TOKEN' ) && SZESUTI_GITHUB_TOKEN ) {
+			$this->checker->setAuthentication( (string) SZESUTI_GITHUB_TOKEN );
+		}
+	}
+
+	/** Azonnali ellenőrzés a `wp plugin update` előtt. */
+	public function cli_check() {
+		if ( null !== $this->checker ) {
+			$this->checker->checkForUpdates();
+		}
 	}
 
 	/**
-	 * A beállított manifest URL.
+	 * A beállított JSON manifest URL (üres = GitHub Release-ek).
 	 *
 	 * @return string
 	 */
-	private function update_url() {
+	private function manifest_url() {
 		/**
 		 * A frissítési manifest URL-je kóddal is megadható (pl. mu-pluginból).
+		 * Üres érték esetén a plugin a GitHub Release-ekből frissít.
 		 *
 		 * @param string $url Manifest URL.
 		 */
-		return (string) apply_filters( 'szesuti_update_url', (string) $this->settings->get( 'advanced.update_url', '' ) );
+		return trim( (string) apply_filters( 'szesuti_update_url', (string) $this->settings->get( 'advanced.update_url', '' ) ) );
 	}
 
 	/**
-	 * A manifest letöltése (12 órára gyorsítótárazva).
+	 * A GitHub-repó URL-je.
 	 *
-	 * @param bool $force Gyorsítótár megkerülése.
-	 * @return array|WP_Error
+	 * @return string
 	 */
-	public function fetch_manifest( $force = false ) {
-		$url = $this->update_url();
+	private function repository() {
+		/**
+		 * A frissítés forrásául szolgáló GitHub-repó (pl. fork esetén).
+		 *
+		 * @param string $url Repó URL.
+		 */
+		return (string) apply_filters( 'szesuti_update_repository', self::REPOSITORY );
+	}
 
-		if ( '' === $url ) {
-			return new WP_Error( 'szesuti_no_update_url', __( 'Nincs megadva frissítési URL.', 'szesuti' ) );
+	/**
+	 * Csak a legutóbbi Release jöhet szóba, a tag és az ág nem.
+	 *
+	 * A tag/ág forrás-ZIP-je a teljes repó, amiben a plugin almappában van – ha a
+	 * Release-ből hiányzik a ZIP, inkább ne legyen frissítés, mint rossz telepítés.
+	 *
+	 * @param array $strategies PUC stratégiák.
+	 * @return array
+	 */
+	public function only_releases( $strategies ) {
+		return array_intersect_key( (array) $strategies, array( 'latest_release' => true ) );
+	}
+
+	/**
+	 * A repó gyökeréből kért fájlok (szesuti.php, readme.txt) lekérésének kihagyása.
+	 *
+	 * A PUC minden ellenőrzésnél a repó gyökerében keresi a fő plugin fájlt és a
+	 * readme.txt-t. Nálunk ezek a szesuti/ almappában vannak, a válasz mindig 404,
+	 * vagyis csak a GitHub API óránkénti, IP-nkénti keretét fogyasztanák. Ha egy
+	 * szerveren sok oldal fut, ez számít. A verziót a Release tagje, a változásnaplót
+	 * a Release leírása adja.
+	 *
+	 * @param false|array|WP_Error $pre  Korábbi rövidzár.
+	 * @param array                $args Kérés argumentumai.
+	 * @param string               $url  Kért URL.
+	 * @return false|array|WP_Error
+	 */
+	public function skip_repo_file_requests( $pre, $args, $url ) {
+		if ( false !== $pre || ! $this->is_skipped_url( $url ) ) {
+			return $pre;
 		}
 
-		if ( ! $force ) {
-			$cached = get_site_transient( self::CACHE_KEY );
-			if ( is_array( $cached ) ) {
-				return $cached;
+		return array(
+			'headers'  => array(),
+			'body'     => '',
+			'response' => array(
+				'code'    => 404,
+				'message' => 'Not Found',
+			),
+			'cookies'  => array(),
+			'filename' => null,
+		);
+	}
+
+	/**
+	 * A kihagyott (repógyökérből fájlt kérő) API-hívás-e?
+	 *
+	 * @param string $url URL.
+	 * @return bool
+	 */
+	private function is_skipped_url( $url ) {
+		$path = trim( (string) wp_parse_url( $this->repository(), PHP_URL_PATH ), '/' );
+		if ( '' === $path ) {
+			return false;
+		}
+
+		return 0 === strpos( (string) $url, 'https://api.github.com/repos/' . $path . '/contents/' );
+	}
+
+	/**
+	 * A frissítés forrása, az admin felületen való kiíráshoz.
+	 *
+	 * @return string
+	 */
+	public function source_label() {
+		$manifest = $this->manifest_url();
+		if ( '' !== $manifest ) {
+			/* translators: %s: manifest URL */
+			return sprintf( __( 'JSON manifest: %s', 'szesuti' ), $manifest );
+		}
+
+		$path = trim( (string) wp_parse_url( $this->repository(), PHP_URL_PATH ), '/' );
+		/* translators: %s: GitHub repó (felhasználó/név) */
+		return sprintf( __( 'GitHub Release-ek: %s', 'szesuti' ), $path );
+	}
+
+	/**
+	 * Azonnali ellenőrzés (az Eszközök fül gombja).
+	 *
+	 * @return string|WP_Error A legfrissebb elérhető verzió, vagy hiba.
+	 */
+	public function check_now() {
+		if ( null === $this->checker ) {
+			return new WP_Error( 'szesuti_update_off', __( 'A frissítéskezelő nem töltődött be (hibás repó URL?).', 'szesuti' ) );
+		}
+
+		$this->checker->checkForUpdates();
+
+		// A getUpdate() csak az újabb verziót adja vissza; a tárolt állapotban az is
+		// benne van, ha a legfrissebb kiadás megegyezik a telepítettel.
+		$remote = $this->checker->getUpdateState()->getUpdate();
+		if ( is_object( $remote ) && ! empty( $remote->version ) ) {
+			return (string) $remote->version;
+		}
+
+		return new WP_Error( 'szesuti_update_failed', $this->describe_errors() );
+	}
+
+	/**
+	 * A sikertelen ellenőrzés oka, emberi nyelven.
+	 *
+	 * @return string
+	 */
+	private function describe_errors() {
+		$details    = array();
+		$rate_limit = false;
+
+		foreach ( $this->checker->getLastRequestApiErrors() as $item ) {
+			if ( isset( $item['url'] ) && $this->is_skipped_url( $item['url'] ) ) {
+				continue;
+			}
+			if ( isset( $item['httpResponse'] ) && is_array( $item['httpResponse'] ) ) {
+				$code = (int) wp_remote_retrieve_response_code( $item['httpResponse'] );
+				if ( 403 === $code || 429 === $code ) {
+					$rate_limit = true;
+				}
+			}
+			if ( isset( $item['error'] ) && is_wp_error( $item['error'] ) ) {
+				$details[] = $item['error']->get_error_message();
 			}
 		}
 
-		$response = wp_remote_get(
-			add_query_arg(
-				array(
-					'site'    => rawurlencode( home_url() ),
-					'version' => SZESUTI_VERSION,
-				),
-				$url
-			),
-			array(
-				'timeout'    => 12,
-				'user-agent' => 'SZESUTI/' . SZESUTI_VERSION . '; ' . home_url(),
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			set_site_transient( self::CACHE_KEY, array(), HOUR_IN_SECONDS );
-			return $response;
-		}
-
-		$code = (int) wp_remote_retrieve_response_code( $response );
-		if ( 200 !== $code ) {
-			set_site_transient( self::CACHE_KEY, array(), HOUR_IN_SECONDS );
-			return new WP_Error( 'szesuti_update_http', sprintf( __( 'A frissítési szerver HTTP %d hibát adott.', 'szesuti' ), $code ) );
-		}
-
-		$data = json_decode( wp_remote_retrieve_body( $response ), true );
-		if ( ! is_array( $data ) || empty( $data['version'] ) ) {
-			set_site_transient( self::CACHE_KEY, array(), HOUR_IN_SECONDS );
-			return new WP_Error( 'szesuti_update_json', __( 'A frissítési manifest nem értelmezhető.', 'szesuti' ) );
-		}
-
-		set_site_transient( self::CACHE_KEY, $data, 12 * HOUR_IN_SECONDS );
-
-		return $data;
-	}
-
-	/** A gyorsítótárazott manifest törlése. */
-	public function clear_cache() {
-		delete_site_transient( self::CACHE_KEY );
-	}
-
-	/**
-	 * Frissítés beillesztése a WordPress frissítési listájába.
-	 *
-	 * @param object $transient Frissítési transient.
-	 * @return object
-	 */
-	public function inject_update( $transient ) {
-		if ( ! is_object( $transient ) ) {
-			return $transient;
-		}
-
-		if ( '' === $this->update_url() ) {
-			return $transient;
-		}
-
-		$manifest = $this->fetch_manifest();
-		if ( is_wp_error( $manifest ) || empty( $manifest['version'] ) || empty( $manifest['download_url'] ) ) {
-			return $transient;
-		}
-
-		if ( ! isset( $transient->response ) || ! is_array( $transient->response ) ) {
-			$transient->response = array();
-		}
-		if ( ! isset( $transient->no_update ) || ! is_array( $transient->no_update ) ) {
-			$transient->no_update = array();
-		}
-
-		$item = (object) array(
-			'id'            => SZESUTI_BASENAME,
-			'slug'          => SZESUTI_SLUG,
-			'plugin'        => SZESUTI_BASENAME,
-			'new_version'   => (string) $manifest['version'],
-			'url'           => isset( $manifest['homepage'] ) ? esc_url_raw( $manifest['homepage'] ) : '',
-			'package'       => esc_url_raw( $manifest['download_url'] ),
-			'icons'         => isset( $manifest['icons'] ) && is_array( $manifest['icons'] ) ? $manifest['icons'] : array(),
-			'banners'       => isset( $manifest['banners'] ) && is_array( $manifest['banners'] ) ? $manifest['banners'] : array(),
-			'tested'        => isset( $manifest['tested'] ) ? (string) $manifest['tested'] : '',
-			'requires_php'  => isset( $manifest['requires_php'] ) ? (string) $manifest['requires_php'] : '',
-			'compatibility' => new stdClass(),
-		);
-
-		if ( version_compare( SZESUTI_VERSION, (string) $manifest['version'], '<' ) ) {
-			$transient->response[ SZESUTI_BASENAME ] = $item;
-			unset( $transient->no_update[ SZESUTI_BASENAME ] );
+		if ( $rate_limit ) {
+			$message = __( 'A GitHub elutasította a kérést, valószínűleg elfogyott az óránkénti keret (60 kérés/IP). Próbáld később, vagy adj meg tokent a SZESUTI_GITHUB_TOKEN konstanssal.', 'szesuti' );
+		} elseif ( '' !== $this->manifest_url() ) {
+			$message = __( 'A manifest nem érhető el, vagy hiányzik belőle a „name”, a „version” vagy a „download_url” mező.', 'szesuti' );
 		} else {
-			$transient->no_update[ SZESUTI_BASENAME ] = $item;
-			unset( $transient->response[ SZESUTI_BASENAME ] );
+			$message = __( 'Nem található olyan kiadás (Release), amelyhez szetemeny-x.y.z.zip melléklet tartozik, vagy a GitHub nem érhető el.', 'szesuti' );
 		}
 
-		return $transient;
-	}
-
-	/**
-	 * A „Részletek” felugró ablak tartalma.
-	 *
-	 * @param false|object|array $result Eredeti eredmény.
-	 * @param string             $action Kért művelet.
-	 * @param object             $args   Argumentumok.
-	 * @return false|object|array
-	 */
-	public function plugin_info( $result, $action, $args ) {
-		if ( 'plugin_information' !== $action ) {
-			return $result;
-		}
-		if ( ! isset( $args->slug ) || SZESUTI_SLUG !== $args->slug ) {
-			return $result;
+		if ( $details ) {
+			$message .= ' (' . implode( ' · ', array_unique( $details ) ) . ')';
 		}
 
-		$manifest = $this->fetch_manifest();
-		if ( is_wp_error( $manifest ) || empty( $manifest['version'] ) ) {
-			return $result;
-		}
-
-		$info = (object) array(
-			'name'          => isset( $manifest['name'] ) ? $manifest['name'] : 'SZetemény',
-			'slug'          => SZESUTI_SLUG,
-			'version'       => (string) $manifest['version'],
-			'author'        => isset( $manifest['author'] ) ? $manifest['author'] : '',
-			'homepage'      => isset( $manifest['homepage'] ) ? $manifest['homepage'] : '',
-			'requires'      => isset( $manifest['requires'] ) ? (string) $manifest['requires'] : '',
-			'tested'        => isset( $manifest['tested'] ) ? (string) $manifest['tested'] : '',
-			'requires_php'  => isset( $manifest['requires_php'] ) ? (string) $manifest['requires_php'] : '',
-			'last_updated'  => isset( $manifest['last_updated'] ) ? (string) $manifest['last_updated'] : '',
-			'download_link' => isset( $manifest['download_url'] ) ? esc_url_raw( $manifest['download_url'] ) : '',
-			'sections'      => isset( $manifest['sections'] ) && is_array( $manifest['sections'] ) ? $manifest['sections'] : array(),
-			'banners'       => isset( $manifest['banners'] ) && is_array( $manifest['banners'] ) ? $manifest['banners'] : array(),
-		);
-
-		return $info;
-	}
-
-	/**
-	 * A letöltött ZIP mappájának nevét a plugin mappanevére igazítja.
-	 *
-	 * Enélkül egy „szesuti-1.1.0” nevű mappából új, párhuzamos plugin lenne.
-	 *
-	 * @param string $source        Kicsomagolt forrás.
-	 * @param string $remote_source Ideiglenes mappa.
-	 * @param object $upgrader      Frissítő.
-	 * @param array  $hook_extra    Extra adatok.
-	 * @return string|WP_Error
-	 */
-	public function fix_source_folder( $source, $remote_source, $upgrader = null, $hook_extra = array() ) {
-		global $wp_filesystem;
-
-		if ( empty( $hook_extra['plugin'] ) || SZESUTI_BASENAME !== $hook_extra['plugin'] ) {
-			return $source;
-		}
-
-		if ( ! $wp_filesystem ) {
-			return $source;
-		}
-
-		$desired = trailingslashit( $remote_source ) . SZESUTI_SLUG;
-
-		if ( trailingslashit( $source ) === trailingslashit( $desired ) ) {
-			return $source;
-		}
-
-		if ( $wp_filesystem->move( $source, $desired, true ) ) {
-			return trailingslashit( $desired );
-		}
-
-		return new WP_Error( 'szesuti_source_rename', __( 'Nem sikerült a frissítési csomag mappáját átnevezni.', 'szesuti' ) );
+		return $message;
 	}
 }

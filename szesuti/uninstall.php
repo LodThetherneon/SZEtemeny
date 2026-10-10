@@ -53,6 +53,14 @@ function szesuti_uninstall_site() {
 	);
 }
 
+/**
+ * A frissítéskezelő (Plugin Update Checker) nyomai. Ez nem felhasználói adat, csak
+ * gyorsítótár és ütemezés, ezért a beállítástól függetlenül mindig törlődik.
+ */
+function szesuti_uninstall_updater() {
+	wp_clear_scheduled_hook( 'puc_cron_check_updates-szesuti' );
+}
+
 if ( is_multisite() ) {
 	$szesuti_sites = get_sites(
 		array(
@@ -64,8 +72,12 @@ if ( is_multisite() ) {
 	foreach ( $szesuti_sites as $szesuti_site_id ) {
 		switch_to_blog( $szesuti_site_id );
 		szesuti_uninstall_site();
+		szesuti_uninstall_updater();
 		restore_current_blog();
 	}
 } else {
 	szesuti_uninstall_site();
+	szesuti_uninstall_updater();
 }
+
+delete_site_option( 'external_updates-szesuti' );

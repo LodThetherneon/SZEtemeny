@@ -309,14 +309,41 @@
 				continue;
 			}
 
+			// A helyőrzőt teljesen eltávolítjuk, és az iframe visszakerül az eredeti
+			// helyére. Ha a doboz ottmaradna, a téma abszolút pozicionált iframe-jei
+			// (16:9-es keret, `height:100%`, levágott fejléc) a 0 magas dobozhoz
+			// igazodnának, és láthatatlanok lennének. Mozgatni a src beállítása
+			// ELŐTT kell, mert a DOM-ban mozgatott iframe újratöltődik.
+			var wrap = node.parentNode;
+			if ( wrap && wrap.className && ( ' ' + wrap.className + ' ' ).indexOf( ' szesuti-placeholder ' ) !== -1 && wrap.parentNode ) {
+				wrap.parentNode.insertBefore( node, wrap );
+				wrap.parentNode.removeChild( wrap );
+			}
+
 			node.setAttribute( 'src', node.getAttribute( 'data-szesuti-src' ) );
 			node.removeAttribute( 'data-szesuti-src' );
 			node.setAttribute( 'data-szesuti-released', '1' );
+		}
+	}
 
-			var wrap = node.closest ? node.closest( '.szesuti-placeholder' ) : null;
-			if ( wrap ) {
-				wrap.classList.add( 'is-released' );
-			}
+	/**
+	 * Ha a téma az iframe-et abszolút pozícióval méretezi (pl. 16:9-es keret,
+	 * `height:100%`), a helyőrző is töltse ki ugyanazt a keretet – különben a
+	 * keret üres marad, a helyőrző pedig alá csúszik vagy kilóg belőle.
+	 */
+	function fitPlaceholders() {
+		if ( ! window.getComputedStyle ) {
+			return;
+		}
+		var nodes = qsa( '.szesuti-placeholder:not([data-szesuti-fit]) > iframe' );
+
+		for ( var i = 0; i < nodes.length; i++ ) {
+			var wrap = nodes[ i ].parentNode;
+			var pos = '';
+			try {
+				pos = window.getComputedStyle( nodes[ i ] ).position;
+			} catch ( e ) {}
+			wrap.setAttribute( 'data-szesuti-fit', 'absolute' === pos || 'fixed' === pos ? 'fill' : 'flow' );
 		}
 	}
 
@@ -368,6 +395,7 @@
 		releaseLinks( granted );
 		releaseImages( granted );
 		releaseIframes( granted );
+		fitPlaceholders();
 		releaseScripts( granted );
 	}
 
@@ -904,6 +932,7 @@
 		}
 
 		syncToggles( defaultCategories() );
+		fitPlaceholders();
 		startObserver();
 		decideVisibility();
 	}

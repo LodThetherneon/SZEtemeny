@@ -595,17 +595,14 @@ class SZESUTI_Admin {
 	private function action_check_update() {
 		check_admin_referer( 'szesuti_tools', 'szesuti_nonce' );
 
-		$updater = new SZESUTI_Updater( $this->settings );
-		$updater->clear_cache();
-		$manifest = $updater->fetch_manifest( true );
+		$version = szesuti()->updater->check_now();
 
-		if ( is_wp_error( $manifest ) ) {
-			set_transient( 'szesuti_update_error', $manifest->get_error_message(), 60 );
+		if ( is_wp_error( $version ) ) {
+			set_transient( 'szesuti_update_error', $version->get_error_message(), 60 );
 			$this->redirect( array( 'tab' => 'tools', 'szesuti_msg' => 'update_error' ) );
 		}
 
-		delete_site_transient( 'update_plugins' );
-		set_transient( 'szesuti_update_version', isset( $manifest['version'] ) ? $manifest['version'] : '', 60 );
+		set_transient( 'szesuti_update_version', $version, 60 );
 		$this->redirect( array( 'tab' => 'tools', 'szesuti_msg' => 'update_checked' ) );
 	}
 
